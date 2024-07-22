@@ -1,72 +1,235 @@
-import pandas as pd
 import streamlit as st
-from sklearn.model_selection import train_test_split
-from sklearn.linear_model import LogisticRegression
-from sklearn.preprocessing import StandardScaler
-from sklearn.pipeline import Pipeline
-from sklearn.compose import ColumnTransformer
-from sklearn.impute import SimpleImputer
+import pandas as pd
+import numpy as np
+#import matplotlib.pyplot as plt
+from sklearn.model_selection import train_test_split,KFold,cross_val_score,GridSearchCV
+from sklearn.svm import SVC
+from sklearn.metrics import f1_score, accuracy_score, confusion_matrix,classification_report,plot_confusion_matrix,plot_roc_curve,precision_score,roc_curve
+# import seaborn as sns
+from sklearn.utils import shuffle
+#from pandas_profiling import ProfileReport
+from sklearn.linear_model import LogisticRegression, Perceptron, RidgeClassifier, SGDClassifier
+from sklearn.svm import SVC, LinearSVC
+from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier, ExtraTreesClassifier
+from sklearn.ensemble import BaggingClassifier, AdaBoostClassifier, VotingClassifier
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.naive_bayes import GaussianNB
+from sklearn.tree import DecisionTreeClassifier
+from sklearn import metrics
 
-# Charger les datasets
-datasets = {
-    'Maladie 1': 'path/to/dataset1.csv',
-    'Maladie 2': 'path/to/dataset2.csv',
-    'Maladie 3': 'path/to/dataset3.csv',
-    'Maladie 4': 'path/to/dataset4.csv',
-    'Maladie 5': 'path/to/dataset5.csv'
-}
+st.markdown(
+    """
+    <style>
+    .main{
+    
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
 
-# Fonction pour charger et préparer les données
-def load_data(path):
-    data = pd.read_csv(path)
-    X = data.drop(columns='target')
-    y = data['target']
-    return X, y
+df = pd.read_csv('Data/dataset.csv')
 
-# Initialiser les modèles pour chaque maladie
-models = {}
-for disease, path in datasets.items():
-    X, y = load_data(path)
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-    numeric_features = X.select_dtypes(include=['int64', 'float64']).columns
-    numeric_transformer = Pipeline(steps=[
-        ('imputer', SimpleImputer(strategy='median')),
-        ('scaler', StandardScaler())
-    ])
+df1 = pd.read_csv('Data/Symptom-severity.csv')
+df1['Symptom'] = df1['Symptom'].str.replace('_',' ')
 
-    preprocessor = ColumnTransformer(
-        transformers=[
-            ('num', numeric_transformer, numeric_features)
-        ])
+@st.cache(allow_output_mutation=True)
+def model():
+    # **Read and shuffle the dataset**
+    df = pd.read_csv('Data/dataset.csv')
+    for col in df.columns:
+        df[col] = df[col].str.replace('_', ' ')
+    df = shuffle(df, random_state=42)
 
-    model = Pipeline(steps=[('preprocessor', preprocessor),
-                            ('classifier', LogisticRegression())])
+    # **Remove the trailing space from the symptom columns**
+    cols = df.columns
+    data = df[cols].values.flatten()
 
-    model.fit(X_train, y_train)
-    models[disease] = model
+    s = pd.Series(data)
+    s = s.str.strip()
+    s = s.values.reshape(df.shape)
 
-# Créer l'interface utilisateur avec Streamlit
-st.title("Prédiction de Maladies")
+    df = pd.DataFrame(s, columns=df.columns)
 
-# Sélectionner la maladie à prédire
-disease_choice = st.selectbox("Choisissez une maladie à prédire", list(datasets.keys()))
+    # **Fill the NaN values with zero**
 
-# Afficher les variables à entrer pour la maladie sélectionnée
-X_example, _ = load_data(datasets[disease_choice])
-inputs = {}
-for col in X_example.columns:
-    if X_example[col].dtype == 'float64' or X_example[col].dtype == 'int64':
-        inputs[col] = st.number_input(f"Entrez la valeur pour {col}", value=float(X_example[col].mean()))
+    df = df.fillna(0)
 
-# Préparer les données pour la prédiction
-input_data = pd.DataFrame([inputs])
+    # **Symptom severity rank**
 
-# Faire la prédiction lorsque le bouton est cliqué
-if st.button("Prédire"):
-    model = models[disease_choice]
-    prediction = model.predict(input_data)
-    if prediction[0] == 1:
-        st.write(f"Le patient a {disease_choice}.")
-    else:
-        st.write(f"Le patient n'a pas {disease_choice}.")
+    df1 = pd.read_csv('Data/Symptom-severity.csv')
+    df1['Symptom'] = df1['Symptom'].str.replace('_', ' ')
+
+
+    # **Get overall list of symptoms**
+
+    df1['Symptom'].unique()
+
+    # **Encode symptoms in the data with the symptom rank**
+
+    vals = df.values
+    symptoms = df1['Symptom'].unique()
+
+    for i in range(len(symptoms)):
+        vals[vals == symptoms[i]] = df1[df1['Symptom'] == symptoms[i]]['weight'].values[0]
+
+    d = pd.DataFrame(vals, columns=cols)
+
+    # **Assign symptoms with no rank to zero**
+
+    d = d.replace('dischromic  patches', 0)
+    d = d.replace('spotting  urination', 0)
+    df = d.replace('foul smell of urine', 0)
+
+    # **Check if entire columns have zero values so we can drop those values**
+
+    (df[cols] == 0).all()
+
+    print("Number of symptoms used to identify the disease ", len(df1['Symptom'].unique()))
+    print("Number of diseases that can be identified ", len(df['Disease'].unique()))
+
+    # Compare linear relationships between attributes using correlation coefficient generated using correlation heatmap
+
+    #plt.figure(figsize=(10, 10))
+    #sns.heatmap(df.corr(), cmap='PuBu', annot=False)
+
+
+    # **Get the names of diseases from data**
+
+    df['Disease'].unique()
+
+    # ### Select the features as symptoms column and label as Disease column
+    #
+    # Explination: A **feature** is an input; **label** is an output.
+    # A feature is one column of the data in your input set. For instance, if you're trying to predict the type of pet someone will choose, your input features might include age, home region, family income, etc. The label is the final choice, such as dog, fish, iguana, rock, etc.
+    #
+    # Once you've trained your model, you will give it sets of new input containing those features; it will return the predicted "label" (pet type) for that person.
+
+    data = df.iloc[:, 1:].values
+    labels = df['Disease'].values
+
+    # ## Splitting the dataset to training (80%) and testing (20%)
+    #
+    # Separating data into training and testing sets is an important part of evaluating data mining models. Typically, when you separate a data set into a training set and testing set, most of the data is used for training, and a smaller portion of the data is used for testing. By using similar data for training and testing, you can minimize the effects of data discrepancies and better understand the characteristics of the model.
+    # After a model has been processed by using the training set, we test the model by making predictions against the test set. Because the data in the testing set already contains known values for the attribute that you want to predict, it is easy to determine whether the model's guesses are correct.
+    #
+    # * Train Dataset: Used to fit the machine learning model.
+    # * Test Dataset: Used to evaluate the fit machine learning model.
+
+    x_train, x_test, y_train, y_test = train_test_split(data, labels, train_size=0.8, random_state=42)
+    print(x_train.shape, x_test.shape, y_train.shape, y_test.shape)
+
+
+    # Random forest code:
+
+    rnd_forest = RandomForestClassifier(random_state=42, max_features='sqrt', n_estimators=500, max_depth=13)
+    rnd_forest.fit(x_train, y_train)
+    preds = rnd_forest.predict(x_test)
+    conf_mat = confusion_matrix(y_test, preds)
+    df_cm = pd.DataFrame(conf_mat, index=df['Disease'].unique(), columns=df['Disease'].unique())
+    print('F1-score% =', f1_score(y_test, preds, average='macro') * 100, '|', 'Accuracy% =',
+          accuracy_score(y_test, preds) * 100)
+    # sns.heatmap(df_cm)
+
+    # kfold = KFold(n_splits=10, shuffle=True, random_state=42)
+    # rnd_forest_train = cross_val_score(rnd_forest, x_train, y_train, cv=kfold, scoring='accuracy')
+    # pd.DataFrame(rnd_forest_train, columns=['Scores'])
+    # print("Mean Accuracy: %.3f%%, Standard Deviation: (%.2f%%)" % (
+    # rnd_forest_train.mean() * 100.0, rnd_forest_train.std() * 100.0))
+    #
+    # kfold = KFold(n_splits=10, shuffle=True, random_state=42)
+    # rnd_forest_test = cross_val_score(rnd_forest, x_test, y_test, cv=kfold, scoring='accuracy')
+    # pd.DataFrame(rnd_forest_test, columns=['Scores'])
+    # print("Mean Accuracy: %.3f%%, Standard Deviation: (%.2f%%)" % (
+    # rnd_forest_test.mean() * 100.0, rnd_forest_test.std() * 100.0))
+
+    return rnd_forest
+
+rnd_forest = model()
+# # Fucntion to manually test the models
+
+def predd(psymptoms, x):
+    print(psymptoms)
+    a = np.array(df1["Symptom"])
+    b = np.array(df1["weight"])
+    for j in range(len(psymptoms)):
+        for k in range(len(a)):
+            if psymptoms[j] == a[k]:
+                psymptoms[j] = b[k]
+
+    psy = [psymptoms]
+
+    pred2 = x.predict(psy)
+    return pred2[0]
+
+
+model()
+
+#----Data import----
+Disease_description = pd.read_csv('Data/Disease_description.csv')
+for col in Disease_description.columns:
+    Disease_description[col] = Disease_description[col].str.replace('_', ' ')
+Disease_precaution = pd.read_csv('Data/Disease_precaution.csv')
+Symptom_severity = pd.read_csv('Data/Symptom-severity.csv')
+Symptom_severity['Symptom'] = Symptom_severity['Symptom'].str.replace('_',' ')
+symptomsList = Symptom_severity["Symptom"].tolist()
+symptomsList.insert(0, "")
+
+# def diseaseInfo(disease):
+#     disease_description = "Description"
+#     disease_precaution = "Precaution"
+#
+#     st.header("You have " + disease)
+#     st.subheader(disease_description)
+#     st.subheader(disease_precaution)
+
+def diseaseInfo(desase):
+    df = pd.read_csv('Data/Disease_precaution.csv')
+    df2 = pd.read_csv('Data/Disease_description.csv')
+
+
+    index = df.index
+    condition = df["Disease"] == desase
+
+    string_index = index[condition]
+    string_index_list = string_index.tolist()
+    DeIn=string_index_list[0]
+    st.subheader(desase)
+    st.write(df2.loc[DeIn,"Description" ])
+    st.write(df.loc[DeIn, : ])
+
+header = st.container()
+modelTraining = st.container()
+
+#----Streamlit----
+
+with header:
+    st.image('header.jpg')
+    st.title("Disease detection website")
+    st.header("Model Training")
+
+with modelTraining:
+    sel_col, disp_col = st.columns(2)
+    choiceSize = st.slider("Insert the number of symptoms", min_value=1, max_value=17, value=3)
+    choiceList = []
+    for i in range(0, choiceSize):
+        choice = st.selectbox("Symptom "+str(i+1), options=symptomsList, key=i)
+        if not(choice in choiceList):
+            choiceList.append(choice)
+        else:
+            if choice!='':
+                st.write("Symptom "+str(i+1)+" and Symptom "+str(choiceList.index(choice)+1)+ "\nCan't have same symptom selected more than once\n")
+    
+    for i in range(choiceSize, 17):
+        choiceList.append(0)
+
+    submit = st.button("Predict")
+    #st.text(choiceList)
+
+    if(submit==True):
+        if len(choiceList)==17:
+            diseaseInfo( predd(choiceList, rnd_forest) )
+        else:
+            st.write("Can't recieve empty inputs")
+        #diseaseInfo("Acne")
