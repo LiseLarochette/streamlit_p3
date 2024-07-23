@@ -1,235 +1,359 @@
+# -*- coding: utf-8 -*-
+
+
+import pickle
 import streamlit as st
-import pandas as pd
-import numpy as np
-#import matplotlib.pyplot as plt
-from sklearn.model_selection import train_test_split,KFold,cross_val_score,GridSearchCV
-from sklearn.svm import SVC
-from sklearn.metrics import f1_score, accuracy_score, confusion_matrix,classification_report,plot_confusion_matrix,plot_roc_curve,precision_score,roc_curve
-# import seaborn as sns
-from sklearn.utils import shuffle
-#from pandas_profiling import ProfileReport
-from sklearn.linear_model import LogisticRegression, Perceptron, RidgeClassifier, SGDClassifier
-from sklearn.svm import SVC, LinearSVC
-from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier, ExtraTreesClassifier
-from sklearn.ensemble import BaggingClassifier, AdaBoostClassifier, VotingClassifier
-from sklearn.neighbors import KNeighborsClassifier
-from sklearn.naive_bayes import GaussianNB
-from sklearn.tree import DecisionTreeClassifier
-from sklearn import metrics
+from streamlit_option_menu import option_menu
 
-st.markdown(
-    """
-    <style>
-    .main{
+
+# loading the saved models
+
+diabetes_model = pickle.load(open('diabetes_model.sav', 'rb'))
+
+heart_disease_model = pickle.load(open('heart_disease_model.sav','rb'))
+
+parkinsons_model = pickle.load(open('parkinsons_model.sav', 'rb'))
+
+BreastCancer_model = pickle.load(open('BreastCancer_model.sav', 'rb'))
+
+
+
+# sidebar for navigation
+with st.sidebar:
     
-    }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
-
-df = pd.read_csv('Data/dataset.csv')
-
-
-df1 = pd.read_csv('Data/Symptom-severity.csv')
-df1['Symptom'] = df1['Symptom'].str.replace('_',' ')
-
-@st.cache(allow_output_mutation=True)
-def model():
-    # **Read and shuffle the dataset**
-    df = pd.read_csv('Data/dataset.csv')
-    for col in df.columns:
-        df[col] = df[col].str.replace('_', ' ')
-    df = shuffle(df, random_state=42)
-
-    # **Remove the trailing space from the symptom columns**
-    cols = df.columns
-    data = df[cols].values.flatten()
-
-    s = pd.Series(data)
-    s = s.str.strip()
-    s = s.values.reshape(df.shape)
-
-    df = pd.DataFrame(s, columns=df.columns)
-
-    # **Fill the NaN values with zero**
-
-    df = df.fillna(0)
-
-    # **Symptom severity rank**
-
-    df1 = pd.read_csv('Data/Symptom-severity.csv')
-    df1['Symptom'] = df1['Symptom'].str.replace('_', ' ')
-
-
-    # **Get overall list of symptoms**
-
-    df1['Symptom'].unique()
-
-    # **Encode symptoms in the data with the symptom rank**
-
-    vals = df.values
-    symptoms = df1['Symptom'].unique()
-
-    for i in range(len(symptoms)):
-        vals[vals == symptoms[i]] = df1[df1['Symptom'] == symptoms[i]]['weight'].values[0]
-
-    d = pd.DataFrame(vals, columns=cols)
-
-    # **Assign symptoms with no rank to zero**
-
-    d = d.replace('dischromic  patches', 0)
-    d = d.replace('spotting  urination', 0)
-    df = d.replace('foul smell of urine', 0)
-
-    # **Check if entire columns have zero values so we can drop those values**
-
-    (df[cols] == 0).all()
-
-    print("Number of symptoms used to identify the disease ", len(df1['Symptom'].unique()))
-    print("Number of diseases that can be identified ", len(df['Disease'].unique()))
-
-    # Compare linear relationships between attributes using correlation coefficient generated using correlation heatmap
-
-    #plt.figure(figsize=(10, 10))
-    #sns.heatmap(df.corr(), cmap='PuBu', annot=False)
-
-
-    # **Get the names of diseases from data**
-
-    df['Disease'].unique()
-
-    # ### Select the features as symptoms column and label as Disease column
-    #
-    # Explination: A **feature** is an input; **label** is an output.
-    # A feature is one column of the data in your input set. For instance, if you're trying to predict the type of pet someone will choose, your input features might include age, home region, family income, etc. The label is the final choice, such as dog, fish, iguana, rock, etc.
-    #
-    # Once you've trained your model, you will give it sets of new input containing those features; it will return the predicted "label" (pet type) for that person.
-
-    data = df.iloc[:, 1:].values
-    labels = df['Disease'].values
-
-    # ## Splitting the dataset to training (80%) and testing (20%)
-    #
-    # Separating data into training and testing sets is an important part of evaluating data mining models. Typically, when you separate a data set into a training set and testing set, most of the data is used for training, and a smaller portion of the data is used for testing. By using similar data for training and testing, you can minimize the effects of data discrepancies and better understand the characteristics of the model.
-    # After a model has been processed by using the training set, we test the model by making predictions against the test set. Because the data in the testing set already contains known values for the attribute that you want to predict, it is easy to determine whether the model's guesses are correct.
-    #
-    # * Train Dataset: Used to fit the machine learning model.
-    # * Test Dataset: Used to evaluate the fit machine learning model.
-
-    x_train, x_test, y_train, y_test = train_test_split(data, labels, train_size=0.8, random_state=42)
-    print(x_train.shape, x_test.shape, y_train.shape, y_test.shape)
-
-
-    # Random forest code:
-
-    rnd_forest = RandomForestClassifier(random_state=42, max_features='sqrt', n_estimators=500, max_depth=13)
-    rnd_forest.fit(x_train, y_train)
-    preds = rnd_forest.predict(x_test)
-    conf_mat = confusion_matrix(y_test, preds)
-    df_cm = pd.DataFrame(conf_mat, index=df['Disease'].unique(), columns=df['Disease'].unique())
-    print('F1-score% =', f1_score(y_test, preds, average='macro') * 100, '|', 'Accuracy% =',
-          accuracy_score(y_test, preds) * 100)
-    # sns.heatmap(df_cm)
-
-    # kfold = KFold(n_splits=10, shuffle=True, random_state=42)
-    # rnd_forest_train = cross_val_score(rnd_forest, x_train, y_train, cv=kfold, scoring='accuracy')
-    # pd.DataFrame(rnd_forest_train, columns=['Scores'])
-    # print("Mean Accuracy: %.3f%%, Standard Deviation: (%.2f%%)" % (
-    # rnd_forest_train.mean() * 100.0, rnd_forest_train.std() * 100.0))
-    #
-    # kfold = KFold(n_splits=10, shuffle=True, random_state=42)
-    # rnd_forest_test = cross_val_score(rnd_forest, x_test, y_test, cv=kfold, scoring='accuracy')
-    # pd.DataFrame(rnd_forest_test, columns=['Scores'])
-    # print("Mean Accuracy: %.3f%%, Standard Deviation: (%.2f%%)" % (
-    # rnd_forest_test.mean() * 100.0, rnd_forest_test.std() * 100.0))
-
-    return rnd_forest
-
-rnd_forest = model()
-# # Fucntion to manually test the models
-
-def predd(psymptoms, x):
-    print(psymptoms)
-    a = np.array(df1["Symptom"])
-    b = np.array(df1["weight"])
-    for j in range(len(psymptoms)):
-        for k in range(len(a)):
-            if psymptoms[j] == a[k]:
-                psymptoms[j] = b[k]
-
-    psy = [psymptoms]
-
-    pred2 = x.predict(psy)
-    return pred2[0]
-
-
-model()
-
-#----Data import----
-Disease_description = pd.read_csv('Data/Disease_description.csv')
-for col in Disease_description.columns:
-    Disease_description[col] = Disease_description[col].str.replace('_', ' ')
-Disease_precaution = pd.read_csv('Data/Disease_precaution.csv')
-Symptom_severity = pd.read_csv('Data/Symptom-severity.csv')
-Symptom_severity['Symptom'] = Symptom_severity['Symptom'].str.replace('_',' ')
-symptomsList = Symptom_severity["Symptom"].tolist()
-symptomsList.insert(0, "")
-
-# def diseaseInfo(disease):
-#     disease_description = "Description"
-#     disease_precaution = "Precaution"
-#
-#     st.header("You have " + disease)
-#     st.subheader(disease_description)
-#     st.subheader(disease_precaution)
-
-def diseaseInfo(desase):
-    df = pd.read_csv('Data/Disease_precaution.csv')
-    df2 = pd.read_csv('Data/Disease_description.csv')
-
-
-    index = df.index
-    condition = df["Disease"] == desase
-
-    string_index = index[condition]
-    string_index_list = string_index.tolist()
-    DeIn=string_index_list[0]
-    st.subheader(desase)
-    st.write(df2.loc[DeIn,"Description" ])
-    st.write(df.loc[DeIn, : ])
-
-header = st.container()
-modelTraining = st.container()
-
-#----Streamlit----
-
-with header:
-    st.image('header.jpg')
-    st.title("Disease detection website")
-    st.header("Model Training")
-
-with modelTraining:
-    sel_col, disp_col = st.columns(2)
-    choiceSize = st.slider("Insert the number of symptoms", min_value=1, max_value=17, value=3)
-    choiceList = []
-    for i in range(0, choiceSize):
-        choice = st.selectbox("Symptom "+str(i+1), options=symptomsList, key=i)
-        if not(choice in choiceList):
-            choiceList.append(choice)
-        else:
-            if choice!='':
-                st.write("Symptom "+str(i+1)+" and Symptom "+str(choiceList.index(choice)+1)+ "\nCan't have same symptom selected more than once\n")
+    selected = option_menu('Multiple Disease Prediction System',
+                          
+                          ['Diabetes Prediction',
+                           'Heart Disease Prediction',
+                           'Parkinsons Prediction',
+                           'Breast Cancer Prediction'],
+                          icons=['activity','heart-pulse','person', 'clipboard2-pulse'],
+                          default_index=0)
     
-    for i in range(choiceSize, 17):
-        choiceList.append(0)
-
-    submit = st.button("Predict")
-    #st.text(choiceList)
-
-    if(submit==True):
-        if len(choiceList)==17:
-            diseaseInfo( predd(choiceList, rnd_forest) )
+    
+# Diabetes Prediction Page
+if (selected == 'Diabetes Prediction'):
+    
+    # page title
+    st.title('Diabetes Prediction using ML')
+    
+    
+    # getting the input data from the user
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        Pregnancies = st.text_input('Number of Pregnancies')
+        
+    with col2:
+        Glucose = st.text_input('Glucose Level')
+    
+    with col3:
+        BloodPressure = st.text_input('Blood Pressure value')
+    
+    with col1:
+        SkinThickness = st.text_input('Skin Thickness value')
+    
+    with col2:
+        Insulin = st.text_input('Insulin Level')
+    
+    with col3:
+        BMI = st.text_input('BMI value')
+    
+    with col1:
+        DiabetesPedigreeFunction = st.text_input('Diabetes Pedigree Function value')
+    
+    with col2:
+        Age = st.text_input('Age of the Person')
+    
+    
+    # code for Prediction
+    diab_diagnosis = ''
+    
+    # creating a button for Prediction
+    
+    if st.button('Diabetes Test Result'):
+        diab_prediction = diabetes_model.predict([[Pregnancies, Glucose, BloodPressure, SkinThickness, Insulin, BMI, DiabetesPedigreeFunction, Age]])
+        
+        if (diab_prediction[0] == 1):
+          diab_diagnosis = 'The person is diabetic'
         else:
-            st.write("Can't recieve empty inputs")
-        #diseaseInfo("Acne")
+          diab_diagnosis = 'The person is not diabetic'
+        
+    st.success(diab_diagnosis)
+
+
+
+
+# Heart Disease Prediction Page
+if (selected == 'Heart Disease Prediction'):
+    
+    # page title
+    st.title('Heart Disease Prediction using ML')
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        age = st.text_input('Age')
+        
+    with col2:
+        sex = st.text_input('Sex(1 for male, 0 for female)')
+        
+    with col3:
+        cp = st.text_input('Chest Pain types')
+        
+    with col1:
+        trestbps = st.text_input('Resting Blood Pressure')
+        
+    with col2:
+        chol = st.text_input('Serum Cholestoral in mg/dl')
+        
+    with col3:
+        fbs = st.text_input('Fasting Blood Sugar > 120 mg/dl')
+        
+    with col1:
+        restecg = st.text_input('Resting Electrocardiographic results')
+        
+    with col2:
+        thalach = st.text_input('Maximum Heart Rate achieved')
+        
+    with col3:
+        exang = st.text_input('Exercise Induced Angina')
+        
+    with col1:
+        oldpeak = st.text_input('ST depression induced by exercise')
+        
+    with col2:
+        slope = st.text_input('Slope of the peak exercise ST segment')
+        
+    with col3:
+        ca = st.text_input('Major vessels colored by flourosopy')
+        
+    with col1:
+        thal = st.text_input('thal: 0 = normal; 1 = fixed defect; 2 = reversable defect')
+        
+        
+     
+     
+    # code for Prediction
+    heart_diagnosis = ''
+    
+    # creating a button for Prediction
+    
+    if st.button('Heart Disease Test Result'):
+        heart_prediction = heart_disease_model.predict([[age, sex, cp, trestbps, chol, fbs, restecg,thalach,exang,oldpeak,slope,ca,thal]])                          
+        
+        if (heart_prediction[0] == 1):
+          heart_diagnosis = 'The person is having heart disease'
+        else:
+          heart_diagnosis = 'The person does not have any heart disease'
+        
+    st.success(heart_diagnosis)
+        
+    
+    
+
+# Parkinson's Prediction Page
+if (selected == "Parkinsons Prediction"):
+    
+    # page title
+    st.title("Parkinson's Disease Prediction using ML")
+    
+    col1, col2, col3, col4, col5 = st.columns(5)  
+    
+    with col1:
+        fo = st.text_input('MDVP_Fo(Hz)')
+        
+    with col2:
+        fhi = st.text_input('MDVP_Fhi(Hz)')
+        
+    with col3:
+        flo = st.text_input('MDVP_Flo(Hz)')
+        
+    with col4:
+        Jitter_percent = st.text_input('MDVP_Jitter(%)')
+        
+    with col5:
+        Jitter_Abs = st.text_input('MDVP_Jitter(Abs)')
+        
+    with col1:
+        RAP = st.text_input('MDVP_RAP')
+        
+    with col2:
+        PPQ = st.text_input('MDVP_PPQ')
+        
+    with col3:
+        DDP = st.text_input('Jitter:DDP')
+        
+    with col4:
+        Shimmer = st.text_input('MDVP_Shimmer')
+        
+    with col5:
+        Shimmer_dB = st.text_input('MDVP_Shimmer(dB)')
+        
+    with col1:
+        APQ3 = st.text_input('Shimmer_APQ3')
+        
+    with col2:
+        APQ5 = st.text_input('Shimmer_APQ5')
+        
+    with col3:
+        APQ = st.text_input('MDVP_APQ')
+        
+    with col4:
+        DDA = st.text_input('Shimmer_DDA')
+        
+    with col5:
+        NHR = st.text_input('NHR')
+        
+    with col1:
+        HNR = st.text_input('HNR')
+        
+    with col2:
+        RPDE = st.text_input('RPDE')
+        
+    with col3:
+        DFA = st.text_input('DFA')
+        
+    with col4:
+        spread1 = st.text_input('spread1')
+        
+    with col5:
+        spread2 = st.text_input('spread2')
+        
+    with col1:
+        D2 = st.text_input('D2')
+        
+    with col2:
+        PPE = st.text_input('PPE')
+        
+    
+    
+    # code for Prediction
+    parkinsons_diagnosis = ''
+    
+    # creating a button for Prediction    
+    if st.button("Parkinson's Test Result"):
+        parkinsons_prediction = parkinsons_model.predict([[fo, fhi, flo, Jitter_percent, Jitter_Abs, RAP, PPQ,DDP,Shimmer,Shimmer_dB,APQ3,APQ5,APQ,DDA,NHR,HNR,RPDE,DFA,spread1,spread2,D2,PPE]])                          
+        
+        if (parkinsons_prediction[0] == 1):
+          parkinsons_diagnosis = "The person has Parkinson's disease"
+        else:
+          parkinsons_diagnosis = "The person does not have Parkinson's disease"
+        
+    st.success(parkinsons_diagnosis)
+
+# Breast Cancer Prediction Page
+if (selected == "Breast Cancer Prediction"):
+    
+    # page title
+    st.title("Breast Cancer Prediction using ML")
+    
+    col1, col2, col3, col4, col5 = st.columns(5)  
+
+    with col1:
+        fo = st.number_input('mean radius')
+        
+    with col2:
+        fhi = st.number_input('mean texture')
+        
+    with col3:
+        flo = st.number_input('mean perimeter')
+        
+    with col4:
+        Jitter_percent = st.number_input('mean area')
+        
+    with col5:
+        Jitter_Abs = st.number_input('mean smoothness')
+        
+    with col1:
+        RAP = st.number_input('mean compactness')
+        
+    with col2:
+        PPQ = st.number_input('mean concavity')
+        
+    with col3:
+        DDP = st.number_input('mean concave points')
+        
+    with col4:
+        Shimmer = st.number_input('mean symmetry')
+        
+    with col5:
+        Shimmer_dB = st.number_input('mean fractal dimension')
+        
+    with col1:
+        APQ3 = st.number_input('radius error')
+        
+    with col2:
+        APQ4 = st.number_input('texture error')
+
+    with col3:
+        APQ5 = st.number_input('perimeter error')
+        
+    with col4:
+        APQ = st.number_input('area error')
+        
+    with col5:
+        DDA = st.number_input('smoothness error')
+        
+    with col1:
+        NHR = st.number_input('compactness error')
+        
+    with col2:
+        HNR = st.number_input('concavity error')
+        
+    with col3:
+        RPDE = st.number_input('concave points error')
+        
+    with col4:
+        DFA = st.number_input('symmetry error')
+
+    with col5:
+        spread1 = st.number_input('fractal dimension error')
+        
+    with col1:
+        spread2 = st.number_input('worst radius')
+        
+    with col2:
+        D2 = st.number_input('worst texture')
+        
+    with col3:
+        PPE = st.number_input('worst perimeter')
+
+        
+    with col4:
+        wa = st.number_input('worst area')
+        
+    with col5:
+        ws = st.number_input('worst smoothness')
+        
+    with col1:
+        w_cm = st.number_input('worst compactness')
+
+    with col2:
+        w_con = st.number_input('worst concavity')
+        
+    with col3:
+        w_cp = st.number_input('worst concave points')
+
+        
+    with col4:
+        w_sym = st.number_input('worst symmetry')
+        
+    with col5:
+        w_fd = st.number_input('worst fractal dimension')
+        
+    
+    
+    # code for Prediction
+    cancer_diagnosis = ''
+    
+    # creating a button for Prediction    
+    if st.button("Breast Cancer Test Result"):
+        cancer_prediction = BreastCancer_model.predict([[fo, fhi, flo, Jitter_percent, Jitter_Abs, RAP, PPQ,DDP,Shimmer,Shimmer_dB,APQ3,APQ4,APQ5,APQ,DDA,NHR,HNR,RPDE,DFA,spread1,spread2,D2,PPE, wa, ws, w_cm, w_con, w_cp, w_sym, w_fd]])                          
+        
+        if (cancer_prediction[0] == 1):
+          cancer_diagnosis = "The Breast Cancer is Benign"
+        else:
+          cancer_diagnosis = "The Breast cancer is Malignant"
+        
+    st.warning(cancer_diagnosis)
